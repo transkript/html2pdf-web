@@ -1,9 +1,11 @@
-const express = require('express');
-const path = require("path");
 const fs = require("fs");
-const router = express.Router();
 const { v4: uuidv4 } = require('uuid');
+const path = require("path");
+const express = require('express');
 const HTML2PDF = require('../public/javascripts/html2pdf');
+
+
+const router = express.Router();
 
 router.post('/pdf', async (req, res) => {
     const file = req.body;
@@ -33,7 +35,7 @@ const converterHandler = async (res, htmlContent) => {
         fs.writeFileSync(tempHTMLPath, htmlContent);
         fs.writeFileSync(templatePath, htmlContent);
 
-        await HTML2PDF.pdf(templatePath, jsonData, tempHTMLPath, outputPath);
+        await HTML2PDF.createPdf(templatePath, jsonData, tempHTMLPath, outputPath);
 
         res.sendFile(outputPath, () => {
             console.log("Completed generating PDF.")

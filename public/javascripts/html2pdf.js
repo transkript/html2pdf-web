@@ -36,7 +36,7 @@ class HTML2PDF {
         this._initializedPlugins = true;
     }
 
-    async pdf(templatePath, json_data, tempHtmlPath, outputPdfPath) {
+    async createPdf(templatePath, json_data, tempHtmlPath, outputPdfPath) {
         await this._initializePlugins();
         if (this._initializedPlugins) {
             // Paths must be absolute
