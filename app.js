@@ -3,6 +3,7 @@ const express = require('express');
 const path = require('path');
 const cookieParser = require('cookie-parser');
 const logger = require('morgan');
+const cors = require('cors');
 const bodyParser = require('body-parser');
 
 const indexRouter = require('./routes/index');
@@ -10,6 +11,26 @@ const usersRouter = require('./routes/users');
 const converterRouter = require('./routes/converter');
 
 const app = express();
+
+app.options('*', cors())
+app.use(cors({
+  allowedHeaders: [
+      'Accept',
+      'Content-Type',
+      'Client-Secret-Id',
+      'Authorization',
+      'Access-Control-Request-Headers',
+      'Access-Control-Request-Method',
+      'Access-Control-Allow-Headers',
+      'Access-Control-Allow-Origin',
+  ],
+  origin: true,
+  methods: "GET,HEAD,PUT,PATCH,POST,DELETE",
+  preflightContinue: false,
+  optionsSuccessStatus: 204,
+  credentials: true,
+  maxAge: 86400, // 24 hours
+}));
 
 // view engine setup
 app.set('views', path.join(__dirname, 'views'));
