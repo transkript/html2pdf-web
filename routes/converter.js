@@ -6,9 +6,16 @@ const HTML2PDF = require('../public/javascripts/html2pdf');
 const archiver = require('archiver');
 
 
+const workdir = `${__dirname}/dump`;
+(() => {
+    if (!fs.existsSync(workdir)) {
+        fs.mkdirSync(workdir);
+    }
+})();
+
 const router = express.Router();
 
-router.post('/pdf', async (req, res) => {
+router.post('/api/pdf', async (req, res) => {
     const file = req.body;
 
     if (!file) {
@@ -17,7 +24,7 @@ router.post('/pdf', async (req, res) => {
     await converterHandler(res, {content: file, name: uuidv4()})
 });
 
-router.post('/pdf/json', async (req, res) => {
+router.post('/api/pdf/json', async (req, res) => {
     const body = req.body;
 
     if (!body.html) {
@@ -29,7 +36,7 @@ router.post('/pdf/json', async (req, res) => {
     await converterHandler(res, body)
 })
 
-router.post('/pdf/json/bulk', async (req, res) => {
+router.post('/api/pdf/json/bulk', async (req, res) => {
     const files = req.body;
 
     if (!files || !Array.isArray(files) || files.length === 0) {
@@ -43,10 +50,10 @@ const converterHandler = async (res, model) => {
         if (!model.name) model.name = uuidv4();
         if (!model.name.endsWith('.pdf')) model.name += '.pdf';
 
-        const templatePath = path.resolve(__dirname, `template-${uuidv4()}.html`);
+        const templatePath = path.resolve(workdir, `template-${uuidv4()}.html`);
         const jsonData = {};
-        const tempHTMLPath = path.resolve(__dirname, `temp-${uuidv4()}.html`);
-        const outputPath = path.resolve(__dirname, `output-${model.name}.pdf`);
+        const tempHTMLPath = path.resolve(workdir, `temp-${uuidv4()}.html`);
+        const outputPath = path.resolve(workdir, `output-${model.name}.pdf`);
 
         fs.writeFileSync(tempHTMLPath, model.content);
         fs.writeFileSync(templatePath, model.content);
@@ -54,21 +61,24 @@ const converterHandler = async (res, model) => {
         await HTML2PDF.createPdf(templatePath, jsonData, tempHTMLPath, outputPath);
 
         res.sendFile(outputPath, () => {
-            console.log("Completed generating PDF.")
             fs.unlinkSync(outputPath);
             fs.unlinkSync(templatePath);
             fs.unlinkSync(tempHTMLPath);
         });
     } catch (error) {
-        console.error('Error generating PDF:', error);
         res.status(500).send('Error generating PDF');
     }
 }
 
 const multipleFilesConverterHandler = async (res, models) => {
-    const zipPath = path.resolve(__dirname, `output-${uuidv4()}.zip`);
-    const outputDir = path.resolve(__dirname, `output-${uuidv4()}`);
+    const outputDir = path.resolve(workdir, `output-${uuidv4()}`);
+    const zipPath = path.resolve(outputDir, `output-${uuidv4()}.zip`);
     fs.mkdirSync(outputDir);
+    const cleanUpCallbacks = [() => {
+        fs.unlinkSync(zipPath);
+        fs.rmSync(outputDir, { recursive: true });
+    }];
+    const cleanUp = () => cleanUpCallbacks.forEach(clean => clean());
 
     try{
         const zipStream = fs.createWriteStream(zipPath);
@@ -77,36 +87,39 @@ const multipleFilesConverterHandler = async (res, models) => {
         });
 
         zipStream.on('close', () => {
-            console.log('Completed generating ZIP.');
-            res.sendFile(zipPath, () => {
-                fs.unlinkSync(zipPath);
-                fs.rmdirSync(outputDir, { recursive: true });
-            });
+            res.sendFile(zipPath, () => cleanUp());
         });
 
         archive.pipe(zipStream);
         
         for (let i = 0; i < models.length; i++) {
             const model = models[i];
-            const { name, html } = model;
-            const templatePath = path.resolve(__dirname, `template-${uuidv4()}.html`);
-            const tempHTMLPath = path.resolve(__dirname, `temp-${uuidv4()}.html`);
-            const outputPath = path.resolve(__dirname, `result-${name}-${uuidv4()}.pdf`);
+            let { name, html } = model;
+            if (typeof name == "string") {
+                if (!name.endsWith(".pdf")) name += ".pdf"
+            }
+            const templatePath = path.resolve(workdir, `template-${uuidv4()}.html`);
+            const tempHTMLPath = path.resolve(workdir, `temp-${uuidv4()}.html`);
+            const outputPath = path.resolve(workdir, `result-${name}-${uuidv4()}.pdf`);
+
+            cleanUpCallbacks.push(() => {
+                fs.unlinkSync(templatePath);
+                fs.unlinkSync(tempHTMLPath);
+                fs.unlinkSync(outputPath);
+            });
 
             fs.writeFileSync(tempHTMLPath, html);
             fs.writeFileSync(templatePath, html);
 
-            await HTML2PDF.createPdf(templatePath, {}, tempHTMLPath, outputPath);
-
-            archive.append(fs.createReadStream(outputPath), { name: name });
-
-            fs.unlinkSync(templatePath);
-            fs.unlinkSync(tempHTMLPath);
-            fs.unlinkSync(outputPath);
+            await HTML2PDF.createPdf(templatePath, {}, tempHTMLPath, outputPath).then(() => {
+                const fileStream = fs.createReadStream(outputPath);
+                archive.append(fileStream, { name: name });
+            });
         }
-        archive.finalize();
+        await archive.finalize();
     }catch(error){
         console.error('Error generating ZIP:', error);
+        cleanUp();
         res.status(500).send('Error generating ZIP');
     }
 }
