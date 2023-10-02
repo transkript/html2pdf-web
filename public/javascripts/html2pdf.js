@@ -39,10 +39,9 @@ class HTML2PDF {
     async createPdf(templatePath, json_data, tempHtmlPath, outputPdfPath) {
         await this._initializePlugins();
         if (this._initializedPlugins) {
-            // Paths must be absolute
             const defaultTempHtmlPath = tempHtmlPath || path.resolve(__dirname, 'test.html');
             const defaultOutputPdfPath =
-                outputPdfPath || path.resolve(__dirname, 'outputde.pdf');
+                outputPdfPath || path.resolve(__dirname, 'output.pdf');
 
             await masterToPDF(
                 templatePath,
