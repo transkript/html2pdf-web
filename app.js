@@ -38,9 +38,11 @@ app.use(cors({
 app.set('views', path.join(__dirname, 'views'));
 app.set('view engine', 'pug');
 
-app.use(bodyParser.raw({type: 'multipart/form-data', limit : '2mb'}))
-app.use(bodyParser.raw({type: 'text/plain', limit : '2mb'}))
-app.use(bodyParser.raw({type: 'text/html', limit : '2mb'}))
+app.use(bodyParser.raw({type: 'multipart/form-data', limit : '50mb'}));
+app.use(bodyParser.raw({type: 'text/plain', limit : '50mb'}));
+app.use(bodyParser.raw({type: 'text/html', limit : '50mb'}));
+app.use(express.json({limit: '50mb'}));
+app.use(express.urlencoded({limit: '50mb'}));
 app.use(logger('dev'));
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
