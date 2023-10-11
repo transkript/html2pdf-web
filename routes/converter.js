@@ -15,16 +15,17 @@ const workdir = `${__dirname}/dump`;
 
 const router = express.Router();
 
-router.post('/api/pdf', async (req, res) => {
+router.post('/pdf', async (req, res) => {
     const file = req.body;
 
     if (!file) {
         return res.status(400).send('Missing HTML file');
     }
-    await converterHandler(res, {content: file, name: uuidv4()})
+    const model = {content: file, name: uuidv4()};
+    await multipleFilesConverterHandler(res, [model])
 });
 
-router.post('/api/pdf/json', async (req, res) => {
+router.post('/pdf/json', async (req, res) => {
     const body = req.body;
 
     if (!body.html) {
@@ -33,10 +34,10 @@ router.post('/api/pdf/json', async (req, res) => {
     if (!body.name) body.name = uuidv4();
     if (!body.name.endsWith('.pdf')) body.name += '.pdf';
 
-    await converterHandler(res, body)
+    await multipleFilesConverterHandler(res, [body])
 })
 
-router.post('/api/pdf/json/bulk', async (req, res) => {
+router.post('/pdf/json/bulk', async (req, res) => {
     const files = req.body;
 
     if (!files || !Array.isArray(files) || files.length === 0) {
@@ -45,38 +46,18 @@ router.post('/api/pdf/json/bulk', async (req, res) => {
     await multipleFilesConverterHandler(res, files)
 })
 
-const converterHandler = async (res, model) => {
-    try {
-        if (!model.name) model.name = uuidv4();
-        if (!model.name.endsWith('.pdf')) model.name += '.pdf';
-
-        const templatePath = path.resolve(workdir, `template-${uuidv4()}.html`);
-        const jsonData = {};
-        const tempHTMLPath = path.resolve(workdir, `temp-${uuidv4()}.html`);
-        const outputPath = path.resolve(workdir, `output-${model.name}.pdf`);
-
-        fs.writeFileSync(tempHTMLPath, model.content);
-        fs.writeFileSync(templatePath, model.content);
-
-        await HTML2PDF.createPdf(templatePath, jsonData, tempHTMLPath, outputPath);
-
-        res.sendFile(outputPath, () => {
-            fs.unlinkSync(outputPath);
-            fs.unlinkSync(templatePath);
-            fs.unlinkSync(tempHTMLPath);
-        });
-    } catch (error) {
-        res.status(500).send('Error generating PDF');
-    }
-}
-
 const multipleFilesConverterHandler = async (res, models) => {
     const outputDir = path.resolve(workdir, `output-${uuidv4()}`);
     const zipPath = path.resolve(outputDir, `output-${uuidv4()}.zip`);
     fs.mkdirSync(outputDir);
     const cleanUpCallbacks = [() => {
         fs.unlinkSync(zipPath);
-        fs.rmSync(outputDir, { recursive: true });
+        fs.rmSync(outputDir, {
+            recursive: true,
+            force: true,
+            maxRetries: 3,
+            retryDelay: 10000
+        });
     }];
     const cleanUp = () => cleanUpCallbacks.forEach(clean => clean());
 
