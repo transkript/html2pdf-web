@@ -13,6 +13,17 @@ const workdir = `${__dirname}/dump`;
     }
 })();
 
+const deleteFile = (paths) => {
+    paths.forEach(path => {
+        fs.rmSync(path, {
+            recursive: true,
+            force: true,
+            maxRetries: 3,
+            retryDelay: 10000
+        });
+    });
+}
+
 const router = express.Router();
 
 router.post('/pdf', async (req, res) => {
@@ -21,7 +32,7 @@ router.post('/pdf', async (req, res) => {
     if (!file) {
         return res.status(400).send('Missing HTML file');
     }
-    const model = {content: file, name: uuidv4()};
+    const model = {html: file, name: uuidv4()};
     await multipleFilesConverterHandler(res, [model])
 });
 
@@ -49,17 +60,17 @@ router.post('/pdf/json/bulk', async (req, res) => {
 const multipleFilesConverterHandler = async (res, models) => {
     const outputDir = path.resolve(workdir, `output-${uuidv4()}`);
     const zipPath = path.resolve(outputDir, `output-${uuidv4()}.zip`);
+    const resultPaths = [];
     fs.mkdirSync(outputDir);
     const cleanUpCallbacks = [() => {
-        fs.unlinkSync(zipPath);
-        fs.rmSync(outputDir, {
-            recursive: true,
-            force: true,
-            maxRetries: 3,
-            retryDelay: 10000
-        });
+        deleteFile([zipPath, outputDir]);
     }];
-    const cleanUp = () => cleanUpCallbacks.forEach(clean => clean());
+    const cleanUp = () => {
+        try {
+            cleanUpCallbacks.forEach(clean => clean());
+        } catch(e) {
+        }
+    }
 
     try{
         const zipStream = fs.createWriteStream(zipPath);
@@ -68,7 +79,10 @@ const multipleFilesConverterHandler = async (res, models) => {
         });
 
         zipStream.on('close', () => {
-            res.sendFile(zipPath, () => cleanUp());
+            if (resultPaths.length === 1)
+                res.sendFile(resultPaths[0], () => cleanUp());
+            else
+                res.sendFile(zipPath, () => cleanUp());
         });
 
         archive.pipe(zipStream);
@@ -76,17 +90,15 @@ const multipleFilesConverterHandler = async (res, models) => {
         for (let i = 0; i < models.length; i++) {
             const model = models[i];
             let { name, html } = model;
-            if (typeof name == "string") {
-                if (!name.endsWith(".pdf")) name += ".pdf"
-            }
+            let filename = `result-${name}-${uuidv4()}.pdf`;
+
             const templatePath = path.resolve(workdir, `template-${uuidv4()}.html`);
             const tempHTMLPath = path.resolve(workdir, `temp-${uuidv4()}.html`);
-            const outputPath = path.resolve(workdir, `result-${name}-${uuidv4()}.pdf`);
+            const outputPath = path.resolve(workdir, filename);
+            resultPaths.push(outputPath);
 
             cleanUpCallbacks.push(() => {
-                fs.unlinkSync(templatePath);
-                fs.unlinkSync(tempHTMLPath);
-                fs.unlinkSync(outputPath);
+                deleteFile([templatePath, tempHTMLPath, outputPath]);
             });
 
             fs.writeFileSync(tempHTMLPath, html);
@@ -94,11 +106,11 @@ const multipleFilesConverterHandler = async (res, models) => {
 
             await HTML2PDF.createPdf(templatePath, {}, tempHTMLPath, outputPath).then(() => {
                 const fileStream = fs.createReadStream(outputPath);
-                archive.append(fileStream, { name: name });
+                archive.append(fileStream, { name: filename });
             });
         }
         await archive.finalize();
-    }catch(error){
+    } catch(error){
         console.error('Error generating ZIP:', error);
         cleanUp();
         res.status(500).send('Error generating ZIP');

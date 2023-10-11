@@ -7,6 +7,7 @@ class HTML2PDF {
     constructor() {
         this.puppeteerConfig = {
             headless: true,
+            timeout: 0,
             args: [
                 '--no-sandbox',
                 '--disable-translate',
